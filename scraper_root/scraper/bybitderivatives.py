@@ -1,3 +1,4 @@
+import bybit
 import datetime
 import logging
 import threading
@@ -19,11 +20,11 @@ class BybitDerivatives:
 #        self.ws_manager = BybitWebsocket(wsURL="wss://stream-testnet.bybit.com/realtime_private", 
 #            api_key=self.api_key, api_secret=self.secret)
         #bybit connection
-        self.rest_manager2 = HTTP("https://api.bybit.com", api_key=self.api_key, api_secret=self.secret)
+        self.rest_manager = HTTP("https://api.bybit.com", api_key=self.api_key, api_secret=self.secret)
 
 
         # check if i am able to login
-        test = self.rest_manager2.api_key_info()
+        test = self.rest_manager.api_key_info()
         testlist = ["OK","ok","Ok"]                    
         if test['ret_msg'] in testlist:
             logger.info(f"rest login succesfull")
@@ -35,7 +36,7 @@ class BybitDerivatives:
         #pull all USDT symbols and create a list.
         global linearsymbols
         linearsymbols = []
-        linearsymbolslist = self.rest_manager2.query_symbol()
+        linearsymbolslist = self.rest_manager.query_symbol()
         try:
             for i in linearsymbolslist['result']:
                 if i['quote_currency'] == 'USDT':
@@ -71,7 +72,7 @@ class BybitDerivatives:
     def sync_account(self):
         while True:
             try:
-                account = self.rest_manager2.get_wallet_balance()
+                account = self.rest_manager.get_wallet_balance()
                 assets = account['result']
                 asset_balances = [AssetBalance(asset=asset,
                                             balance=float(assets[asset]['wallet_balance']),
@@ -98,7 +99,7 @@ class BybitDerivatives:
                 activesymbols = ["BTCUSDT"]
                 positions = []
                 for i in linearsymbols:
-                    exchange_position = self.rest_manager2.my_position(symbol="{}".format(i))
+                    exchange_position = self.rest_manager.my_position(symbol="{}".format(i))
                     for x in exchange_position['result']:
                         if x['position_value'] !=0: #filter only items that have positions
                             if x['side'] == "Buy": #recode buy / sell into long / short
@@ -130,7 +131,7 @@ class BybitDerivatives:
             if len(activesymbols) > 1: # if activesymbols has more than 1 item do stuff
                 for i in activesymbols:                
                     try: #when there a new symbols a pnl request fails with an error and scripts stops. so in a try and pass.
-                        open_orders = self.rest_manager2.get_active_order(symbol="{}".format(i), order_status="New")
+                        open_orders = self.rest_manager.get_active_order(symbol="{}".format(i), order_status="New")
                         if not open_orders['result']['data']: #note: None = empty. 
                             pass
                         else:                        
@@ -196,7 +197,7 @@ class BybitDerivatives:
             if len(activesymbols) > 1: # if activesymbols has more than 1 item do stuff
                 try:
                     for i in activesymbols:
-                        event = self.rest_manager2.public_trading_records(symbol="{}".format(i), limit='1')
+                        event = self.rest_manager.public_trading_records(symbol="{}".format(i), limit='1')
                         event1 = event['result'][0]
                         tick = Tick(symbol=event1['symbol'],
                                         price=float(event1['price']),
@@ -214,16 +215,16 @@ class BybitDerivatives:
         x=0 #not pythonic but it works        
         while True:            
             if x == 0:
-                #fill table on first run with 50 pages x 50 limit. TODO: full all-time history data and limit to one? page after inital fill
+                #fill table on first run with 50 pages x 50 limit. TODO: full all-time history data
                 for i in linearsymbols:    
                     try: #when there is a new symbol, pnl request fails with an error and scripts stops. so in a try and pass.
-                        exchange_pnl = self.rest_manager2.closed_profit_and_loss(symbol="{}".format(i), limit='50')
+                        exchange_pnl = self.rest_manager.closed_profit_and_loss(symbol="{}".format(i), limit='50')
                     #    pprint (exchange_pnl)
                         if not exchange_pnl['result']['data']: #note: None = empty. 
                             pass
                         else:
                             for page in range(1,50):
-                                exchange_pnl = self.rest_manager2.closed_profit_and_loss(symbol="{}".format(i), limit='50', page="{}".format(page))
+                                exchange_pnl = self.rest_manager.closed_profit_and_loss(symbol="{}".format(i), limit='50', page="{}".format(page))
                                 # print (exchange_pnl["result"]['data'])
                                 if not exchange_pnl['result']['data']: #note: None = empty. 
                                     pass
@@ -242,6 +243,7 @@ class BybitDerivatives:
                                     self.repository.process_incomes(incomes)
                             time.sleep(5) # pause to not overload the api limit
                     except Exception:
+                        logger.error(f'Failed to sync trades: {e}')
                         time.sleep(360)
                         pass
                 x += 1
@@ -249,7 +251,7 @@ class BybitDerivatives:
             else:   
                 for i in linearsymbols:    
                     try: #when there is a new symbol, pnl request fails with an error and scripts stops. so in a try and pass.
-                        exchange_pnl = self.rest_manager2.closed_profit_and_loss(symbol="{}".format(i), limit='50')
+                        exchange_pnl = self.rest_manager.closed_profit_and_loss(symbol="{}".format(i), limit='50')
                     #    pprint (exchange_pnl)
                         if not exchange_pnl['result']['data']: #note: None = empty. 
                             pass
@@ -268,6 +270,7 @@ class BybitDerivatives:
                             self.repository.process_incomes(incomes)
                         time.sleep(5) # pause to not overload the api limit
                     except Exception:
+                        logger.error(f'Failed to sync trades: {e}')
                         time.sleep(360)
                         pass
                 logger.warning('Synced trades')
