@@ -1,4 +1,3 @@
-import bybit
 import datetime
 import logging
 import threading
